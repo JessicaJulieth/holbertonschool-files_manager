@@ -21,13 +21,5 @@ async function postNew(req, res) {
   else res.status(500).json({ error: 'Could not create user' });
 }
 
-async function getMe(req, res) {
-  const key = req.headers['x-token'];
-  const userId = await redisClient.get(`auth_${key}`);
-  if (userId) {
-    const user = await dbClient.client.collection('users').findOne({ _id: ObjectId(userId) });
-    res.json({ id: user._id, email: user.email });
-  } else res.status(401).json({ error: 'Unauthorized' });
-}
 
-module.exports = { postNew, getMe };
+module.exports = { postNew };
