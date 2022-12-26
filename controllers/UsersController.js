@@ -21,5 +21,4 @@ async function postNew(req, res) {
   else res.status(500).json({ error: 'Could not create user' });
 }
 
-
 module.exports = { postNew };
