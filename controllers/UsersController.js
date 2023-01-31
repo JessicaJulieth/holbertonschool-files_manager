@@ -1,24 +1,32 @@
-const sha1 = require('sha1');
-const { ObjectId } = require('mongodb');
-const dbClient = require('../utils/db');
-const redisClient = require('../utils/redis');
+import crypto from 'crypto';
+import Queue from 'bull';
+import dbClient from '../utils/db';
+import { checkAuth, findUserById } from '../utils/helpers';
 
-async function postNew(req, res) {
-  const { email } = req.body;
-  const pwd = req.body.password;
+class UsersController {
+  static async postNew(request, response) {
+    const usQueue = new Queue('userQueue');
+    const { email, password } = request.body;
+    if (!email) return response.status(400).json({ error: 'Missing email' });
+    if (!password) return response.status(400).json({ error: 'Missing password' });
 
-  if (!email) res.status(400).json({ error: 'Missing email' });
-  if (!pwd) res.status(400).json({ error: 'Missing password ' });
+    const userExistsArray = await dbClient.users.find({ email }).toArray();
+    if (userExistsArray.length > 0) return response.status(400).json({ error: 'Already exist' });
 
-  const found = await dbClient.client.collection('users').find({ email }).count();
-  if (found > 0) {
-    res.status(400).json({ error: 'Already exist' });
-    return;
+    const hashedPassword = crypto.createHash('SHA1').update(password).digest('hex');
+    const resultObj = await dbClient.users.insertOne({ email, password: hashedPassword });
+    const createdUser = { id: resultObj.ops[0]._id, email: resultObj.ops[0].email };
+    await usQueue.add({ userId: createdUser.id });
+    return response.status(201).json(createdUser);
   }
-  const usr = { email, password: sha1(pwd) };
-  const user = await dbClient.client.collection('users').insertOne(usr);
-  if (user) res.status(201).json({ id: user.ops[0]._id, email: user.ops[0].email });
-  else res.status(500).json({ error: 'Could not create user' });
+
+  static async getMe(request, response) {
+    const userId = await checkAuth(request);
+    if (!userId) return response.status(401).json({ error: 'Unauthorized' });
+    const user = await findUserById(userId);
+    if (!user) return response.status(401).json({ error: 'Unauthorized' });
+    return response.json({ id: user._id, email: user.email });
+  }
 }
 
-module.exports = { postNew };
+export default UsersController;
